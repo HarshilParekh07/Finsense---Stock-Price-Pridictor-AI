@@ -9,7 +9,12 @@ import plotly.express as px
 
 @st.cache_resource(show_spinner="Loading AI Model...")
 def get_model():
-    return load_model("keras_model.h5", compile=False)
+    import os
+    if not os.path.exists("finsense_model.keras"):
+        st.error("ML model file missing: finsense_model.keras")
+        st.stop()
+    return load_model("finsense_model.keras", compile=False)
+
 
 @st.cache_data(ttl=3600)
 def get_recommendations(symbol):
