@@ -3,6 +3,7 @@ import pandas as pd
 import yfinance as yf
 import tensorflow as tf
 from tensorflow.keras.models import load_model
+from tensorflow.keras.layers import InputLayer
 import streamlit as st
 from datetime import datetime
 import plotly.graph_objects as go
@@ -18,10 +19,16 @@ def safe_get(data, key, default="Not Available"):
     except:
         return default
 
+class PatchedInputLayer(InputLayer):
+    def __init__(self, *args, **kwargs):
+        kwargs.pop('optional', None)
+        if 'batch_shape' in kwargs:
+            kwargs['batch_input_shape'] = kwargs.pop('batch_shape')
+        super().__init__(*args, **kwargs)
+
 def safe_download(symbol):
     try:
         session = requests.Session()
-        # Production headers to bypass cloud IP blocks
         session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         })
@@ -38,21 +45,17 @@ def safe_download(symbol):
         for s in symbols_to_try:
             ticker = yf.Ticker(s, session=session)
             
-            # Force metadata fetch to check if blocked
+            # Fast check for block
             try:
-                # Use fast_info to check timezone/existence
-                f_info = ticker.fast_info
-                if not f_info or "timezone" not in f_info:
-                    continue # Try next symbol
-            except Exception:
+                if not ticker.fast_info or "timezone" not in ticker.fast_info:
+                    continue
+            except:
                 continue
 
-            # Fetch history
             df = ticker.history(period="max")
             
             if df is not None and not df.empty:
                 final_symbol = s
-                # Fetch full info safely if history worked
                 try:
                     info = ticker.info
                 except:
@@ -62,20 +65,16 @@ def safe_download(symbol):
         if df is None or df.empty:
             return None, symbol, {}
 
-        # Handle MultiIndex columns
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(-1)
         
-        # Standardize column names
         df.columns = [str(c).capitalize() for c in df.columns]
 
         return df, final_symbol, info
 
     except Exception as e:
-        st.error(f"Production Fetch Error: {str(e)}")
         return None, f"Error: {str(e)}", {}
 
-# Initialize UI
 st.title('Finsense - Stock Analysis')
 st.subheader("Finsense Dashboard")
 user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE, AAPL, TCS.NS)")
@@ -84,16 +83,20 @@ if not user_input.strip():
     st.info("Please enter a stock symbol to begin analysis.")
     st.stop()
 
-# Data fetching with spinner
+# Data fetching
 with st.spinner(f"Fetching data for {user_input}..."):
     df, symbol, info = safe_download(user_input)
 
 if df is None:
     st.error(f"No market data found for: {symbol}")
-    st.info("Try common tickers like: RELIANCE (NSE), AAPL (Nasdaq), TSLA (Nasdaq)")
-    st.markdown("---")
-    st.write("Troubleshooting: Ensure your internet is working and the symbol is correct on Yahoo Finance.")
+    st.info("Try common tickers like: RELIANCE, TCS, AAPL, TSLA, MSFT")
     st.stop()
+
+def safe_get(data, key, default="Not Available"):
+    try:
+        return data.get(key, default)
+    except:
+        return default
 # UI for Glass effect of Company Profile
 st.markdown("""
 <style>
@@ -585,12 +588,15 @@ data_training_scaler = scaler.fit_transform(data_training)
 
 # Load my model 
 try:
-    # Using .keras format which is more compatible with newer Keras versions
+    # Try .keras format first (more stable)
     model = load_model("finsense_model.keras", compile=False)
-except Exception as e:
-    # Fallback to .h5 if .keras is missing or fails
-    model = load_model("keras_model.h5", compile=False)
-
+except Exception:
+    try:
+        # Fallback to .h5 with InputLayer patch
+        model = load_model("keras_model.h5", custom_objects={'InputLayer': PatchedInputLayer}, compile=False)
+    except Exception as e:
+        st.error(f"Model Loading Error: {e}")
+        st.stop()
 
 # Testing Part 
 
