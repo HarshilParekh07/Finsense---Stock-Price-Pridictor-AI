@@ -11,6 +11,21 @@ import plotly.express as px
 def get_model():
     return load_model("keras_model.h5")
 
+@st.cache_data(ttl=3600)
+def get_major_holders(symbol):
+    try:
+        return yf.Ticker(symbol).major_holders
+    except:
+        return None
+
+@st.cache_data(ttl=3600)
+def get_institutional_holders(symbol):
+    try:
+        return yf.Ticker(symbol).institutional_holders
+    except:
+        return None
+
+
 
 st.title('Finsense - Stock Analysis')
 st.subheader("Finsense Dashboard")
@@ -53,9 +68,17 @@ def safe_download(symbol):
     except Exception as e:
         return None, str(e)
 
+ticker = user_input
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_company_info(symbol):
+    try:
+        t = yf.Ticker(symbol)
+        return t.info
+    except Exception:
+        return {}
 
-ticker = yf.Ticker(user_input)
-info = ticker.info
+info = get_company_info(user_input)
+
 df, symbol = safe_download(user_input)
 
 if df is None:
@@ -300,8 +323,11 @@ with summary_cols[2]:
 
 
 # Major Holders
-if ticker.major_holders is not None:
-    major_df = ticker.major_holders.copy()
+major_df = get_major_holders(user_input)
+
+if major_df is not None:
+    major_df = major_df.copy()
+
 
     st.markdown("Major Holders Overview")
 
