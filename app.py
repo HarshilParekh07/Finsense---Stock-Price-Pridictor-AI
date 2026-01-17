@@ -1,93 +1,31 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
+import tensorflow as tf
+from tensorflow.keras.models import load_model
 import streamlit as st
-import onnxruntime as ort
 from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
-import os
 
-@st.cache_resource(show_spinner="Loading AI Model...")
-def get_model():
-    model_path = "finsense_model.onnx"
-
-    if not os.path.exists(model_path):
-        st.error("ONNX model not found: finsense_model.onnx")
-        st.stop()
-
-    session = ort.InferenceSession(
-        model_path,
-        providers=["CPUExecutionProvider"]
-    )
-
-    return session
-    
-@st.cache_data(ttl=3600)
-def resolve_symbol(query):
+# Utility Functions
+def safe_get(data, key, default="Not Available"):
+    if not isinstance(data, dict):
+        return default
     try:
-        results = yf.search(query, max_results=1)
-        if results and len(results) > 0:
-            return results[0]["symbol"]
+        return data.get(key, default)
     except:
-        pass
-    return query
-
-
-
-@st.cache_data(ttl=3600)
-def get_recommendations(symbol):
-    try:
-        return yf.Ticker(symbol).recommendations
-    except:
-        return None
-
-
-@st.cache_data(ttl=3600)
-def get_major_holders(symbol):
-    try:
-        return yf.Ticker(symbol).major_holders
-    except:
-        return None
-
-@st.cache_data(ttl=3600)
-def get_institutional_holders(symbol):
-    try:
-        return yf.Ticker(symbol).institutional_holders
-    except:
-        return None
-
-@st.cache_data(ttl=3600)
-def get_recommendations_summary(symbol):
-    try:
-        t = yf.Ticker(symbol)
-        return t.recommendations_summary
-    except:
-        return None
-
-
-
-st.title('Finsense - Stock Analysis')
-st.subheader("Finsense Dashboard")
-user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE.NS, AAPL, TCS.NS)")
-
-symbol = resolve_symbol(user_input)
-
-
-if not user_input.strip():
-    st.info("Please enter a stock symbol to begin analysis.")
-    st.stop()
-
+        return default
 
 def safe_download(symbol):
     try:
         symbol = symbol.strip().upper()
-
         # Auto-fix Indian market symbols
         if "." not in symbol and len(symbol) <= 6:
             symbol += ""
 
-        end_date = datetime.today().strftime("2026-01-16")
+        # Correct date formatting
+        end_date = datetime.today().strftime("%Y-%m-%d")
 
         df = yf.download(
             tickers=[symbol],
@@ -100,10 +38,13 @@ def safe_download(symbol):
 
         # Flatten multi-index columns
         if isinstance(df.columns, tuple) or hasattr(df.columns, "levels"):
-            df = df[symbol]
+            try:
+                df = df[symbol]
+            except KeyError:
+                pass
             df.columns = [c.capitalize() for c in df.columns]
 
-        if df.empty:
+        if df is None or df.empty:
             return None, symbol
 
         return df, symbol
@@ -111,49 +52,33 @@ def safe_download(symbol):
     except Exception as e:
         return None, str(e)
 
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_company_info(query):
-    try:
-        symbol = resolve_symbol(query)
-        t = yf.Ticker(symbol)
+# Initialize info
+info = {}
 
-        data = {}
+st.title('Finsense - Stock Analysis')
+st.subheader("Finsense Dashboard")
+user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE.NS, AAPL, TCS.NS)")
 
-        # Fast, reliable fields
-        try:
-            fi = t.fast_info
-            data["shortName"] = t.ticker
-            data["currency"] = fi.get("currency")
-            data["marketCap"] = fi.get("market_cap")
-            data["exchange"] = fi.get("exchange")
-        except:
-            pass
+if not user_input.strip():
+    st.info("Please enter a stock symbol to begin analysis.")
+    st.stop()
 
-        # Fallback fields (slower, may be blocked)
-        try:
-            info = t.info
-            data.update(info)
-        except:
-            pass
 
-        return data
-    except:
-        return {}
+# Fetch Ticker Data
+try:
+    ticker = yf.Ticker(user_input)
+    info = ticker.info
+    if not info:
+        info = {}
+except Exception:
+    info = {}
 
-with st.spinner("Downloading market data..."):
-    df, symbol = safe_download(symbol)
+df, symbol = safe_download(user_input)
 
 if df is None:
     st.error(f"No market data found for: {symbol}")
     st.info("Try: RELIANCE.NS, TCS.NS, INFY.NS, AAPL, MSFT")
     st.stop()
-
-
-def safe_get(data, key, default="Not Available"):
-    try:
-        return data.get(key, default)
-    except:
-        return default
 # UI for Glass effect of Company Profile
 st.markdown("""
 <style>
@@ -386,11 +311,8 @@ with summary_cols[2]:
 
 
 # Major Holders
-major_df = get_major_holders(user_input)
-
-if major_df is not None:
-    major_df = major_df.copy()
-
+if ticker.major_holders is not None:
+    major_df = ticker.major_holders.copy()
 
     st.markdown("Major Holders Overview")
 
@@ -423,10 +345,8 @@ else:
 
 
 # Pie Chart for Holders
-inst_df = get_institutional_holders(user_input)
-
-if inst_df is not None:
-    inst_df = inst_df.copy()
+if ticker.institutional_holders is not None:
+    inst_df = ticker.institutional_holders.copy()
 
     st.markdown("Institutional Holders Distribution")
 
@@ -471,10 +391,8 @@ import pandas as pd
 st.markdown("Analyst Recommendations")
 
 # CASE 1: Detailed analyst logs
-rec_df = get_recommendations(user_input)
-
-if rec_df is not None:
-    rec_df = rec_df.copy()
+if ticker.recommendations is not None:
+    rec_df = ticker.recommendations.copy()
 
     if not rec_df.empty:
         rec_df = rec_df.tail(10).reset_index()
@@ -515,10 +433,8 @@ if rec_df is not None:
             st.stop()
 
 # CASE 2: Summary trend table 
-trend_df = get_recommendations_summary(user_input)
-
-if trend_df is not None:
-    trend_df = trend_df.copy()
+if hasattr(ticker, "recommendations_summary") and ticker.recommendations_summary is not None:
+    trend_df = ticker.recommendations_summary.copy()
 
     st.markdown("Analyst Consensus Trend (Monthly)")
 
@@ -641,86 +557,105 @@ fig.update_layout(
 
 # Render in Streamlit
 st.plotly_chart(fig, use_container_width=True)
-    
+
+
 # Spliting Data into Tranning and Testing
 
-# AI Price Prediction Engine
-st.markdown("AI Closing Price Prediction Model")
-run_ai = st.button("Run Price Prediction")
+data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.70)])
+data_testing = pd.DataFrame(df['Close'][int(len(df)*0.70): int(len(df))])
 
-if run_ai:
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler(feature_range=(0,1))
+data_training_scaler = scaler.fit_transform(data_training)
 
-    # Data Preparation
-    data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.70)])
-    data_testing = pd.DataFrame(df['Close'][int(len(df)*0.70): int(len(df))])
-
-    from sklearn.preprocessing import MinMaxScaler
-    scaler = MinMaxScaler(feature_range=(0,1))
-    data_training_scaler = scaler.fit_transform(data_training)
-
-    # Load Model
-    model = get_model()
-    st.success("AI Model Loaded — Running Predictions")
-
-    # Testing Dataset
-    past_100_days = data_training.tail(100)
-    final_df = pd.concat([past_100_days, data_testing], ignore_index=True)
-    input_data = scaler.fit_transform(final_df)
-
-    x_test = []
-    y_test = []
-
-    for i in range(100, input_data.shape[0]):
-        x_test.append(input_data[i-100: i])
-        y_test.append(input_data[i, 0])
-
-    x_test, y_test = np.array(x_test), np.array(y_test)
-
-    # Prediction
-
-    input_name = model.get_inputs()[0].name
-    x_test_onnx = x_test.astype(np.float32)
-
-    y_predicted = model.run(
-        None,
-        {input_name: x_test_onnx}
-    )[0]
+# Load my model 
+try:
+    # Using .keras format which is more compatible with newer Keras versions
+    model = load_model("finsense_model.keras", compile=False)
+except Exception as e:
+    # Fallback to .h5 if .keras is missing or fails
+    model = load_model("keras_model.h5", compile=False)
 
 
-    scale_factor = 1 / scaler.scale_[0]
-    y_predicted = y_predicted * scale_factor
-    y_test = y_test * scale_factor
+# Testing Part 
 
-    # Visualization
-    st.subheader("Actual Price vs Predicted Price")
+past_100_days = data_training.tail(100)
+final_df = pd.concat([past_100_days, data_testing], ignore_index=True)
+input_data = scaler.fit_transform(final_df)
 
-    x_axis = np.arange(len(y_test))
-    fig = go.Figure()
+x_test = []
+y_test = []
 
-    fig.add_trace(go.Scatter(
-        x=x_axis,
-        y=y_test.flatten(),
-        name="Actual Price",
-        mode="lines"
-    ))
+for i in range(100, input_data.shape[0]):
+    x_test.append(input_data[i-100: i])
+    y_test.append(input_data[i, 0])
 
-    fig.add_trace(go.Scatter(
-        x=x_axis,
-        y=y_predicted.flatten(),
-        name="Predicted Price",
-        mode="lines",
-        line=dict(dash="dash")
-    ))
+x_test, y_test = np.array(x_test), np.array(y_test)
 
-    fig.update_layout(
-        template="plotly_dark",
-        height=500,
-        hovermode="x unified",
-        title="Actual vs Predicted Price"
-    )
+# Making Predictions
 
-    st.plotly_chart(fig, use_container_width=True)
+y_predicted = model.predict(x_test)
+scaler = scaler.scale_
+scale_factor = 1/scaler[0]
+y_predicted = y_predicted * scale_factor
+y_test = y_test * scale_factor
 
-else:
-    st.info("Click 'Run Price Prediction' to load the AI model and generate predictions.")
+# Visualizing the Predicted Data 
 
+st.subheader("Actual Price vs Predicted Price")
+
+# Convert arrays to index for clean plotting
+x_axis = np.arange(len(y_test))
+
+fig = go.Figure()
+
+# Actual Price Line
+fig.add_trace(go.Scatter(
+    x=x_axis,
+    y=y_test.flatten(),
+    name="Actual Price",
+    mode="lines",
+    line=dict(color="#00E5FF", width=2.5),
+    hovertemplate="Actual: ₹%{y:.2f}<extra></extra>"
+))
+
+# Predicted Price Line
+fig.add_trace(go.Scatter(
+    x=x_axis,
+    y=y_predicted.flatten(),
+    name="Predicted Price",
+    mode="lines",
+    line=dict(color="#FF3D00", width=2.5, dash="dash"),
+    hovertemplate="Predicted: ₹%{y:.2f}<extra></extra>"
+))
+
+# Predicted Graph Layout 
+fig.update_layout(
+    template="plotly_dark",
+    height=500,
+    hovermode="x unified",
+    title=dict(
+        text="Actual vs Predicted Price",
+        x=0,
+        font=dict(size= 15)
+    ),
+    xaxis=dict(
+        title="Time",
+        showgrid=False
+    ),
+    yaxis=dict(
+        title="Price (₹)",
+        gridcolor="rgba(255,255,255,0.1)"
+    ),
+    legend=dict(
+        orientation="h",
+        yanchor="bottom",
+        y=1.02,
+        xanchor="right",
+        x=1
+    ),
+    margin=dict(l=20, r=20, t=50, b=20)
+)
+
+# Render in Streamlit
+st.plotly_chart(fig, use_container_width=True)
