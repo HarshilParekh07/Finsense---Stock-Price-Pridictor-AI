@@ -23,6 +23,14 @@ def get_model():
 
     return session
 
+    
+def safe_get(data, key, default="Not Available"):
+    try:
+        return data.get(key, default)
+    except:
+        return default
+
+
 @st.cache_data(ttl=3600)
 def resolve_symbol(query):
     try:
@@ -32,14 +40,6 @@ def resolve_symbol(query):
     except:
         pass
     return query
-
-def safe_get(data, key, default="Not Available"):
-    try:
-        return data.get(key, default)
-    except:
-        return default
-
-
 
 
 @st.cache_data(ttl=3600)
