@@ -22,6 +22,16 @@ def get_model():
     )
 
     return session
+@st.cache_data(ttl=3600)
+def resolve_symbol(query):
+    try:
+        results = yf.search(query, max_results=1)
+        if results and len(results) > 0:
+            return results[0]["symbol"]
+    except:
+        pass
+    return query
+
 
 
 @st.cache_data(ttl=3600)
@@ -60,6 +70,9 @@ st.title('Finsense - Stock Analysis')
 st.subheader("Finsense Dashboard")
 user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE.NS, AAPL, TCS.NS)")
 
+symbol = resolve_symbol(user_input)
+
+
 if not user_input.strip():
     st.info("Please enter a stock symbol to begin analysis.")
     st.stop()
@@ -97,23 +110,43 @@ def safe_download(symbol):
     except Exception as e:
         return None, str(e)
 
-ticker = user_input
 @st.cache_data(ttl=3600, show_spinner=False)
-def get_company_info(symbol):
+def get_company_info(query):
     try:
+        symbol = resolve_symbol(query)
         t = yf.Ticker(symbol)
-        return t.info
-    except Exception:
+
+        data = {}
+
+        # Fast, reliable fields
+        try:
+            fi = t.fast_info
+            data["shortName"] = t.ticker
+            data["currency"] = fi.get("currency")
+            data["marketCap"] = fi.get("market_cap")
+            data["exchange"] = fi.get("exchange")
+        except:
+            pass
+
+        # Fallback fields (slower, may be blocked)
+        try:
+            info = t.info
+            data.update(info)
+        except:
+            pass
+
+        return data
+    except:
         return {}
 
-info = get_company_info(user_input)
-
-df, symbol = safe_download(user_input)
+with st.spinner("Downloading market data..."):
+    df, symbol = safe_download(symbol)
 
 if df is None:
     st.error(f"No market data found for: {symbol}")
     st.info("Try: RELIANCE.NS, TCS.NS, INFY.NS, AAPL, MSFT")
     st.stop()
+
 
 def safe_get(data, key, default="Not Available"):
     try:
