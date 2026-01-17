@@ -7,6 +7,7 @@ import streamlit as st
 from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
+import requests
 
 # Utility Functions
 def safe_get(data, key, default="Not Available"):
@@ -19,44 +20,59 @@ def safe_get(data, key, default="Not Available"):
 
 def safe_download(symbol):
     try:
+        session = requests.Session()
+        # Production headers to bypass cloud IP blocks
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        })
+
         symbol = symbol.strip().upper()
-        # symbols to try in order
         symbols_to_try = [symbol]
         if "." not in symbol:
             symbols_to_try.append(symbol + ".NS")
 
         df = None
         final_symbol = symbol
+        info = {}
 
         for s in symbols_to_try:
-            # yf.download is generally more reliable than Ticker.history in inconsistent environments
-            df = yf.download(s, period="max", auto_adjust=True, progress=False)
+            ticker = yf.Ticker(s, session=session)
+            
+            # Force metadata fetch to check if blocked
+            try:
+                # Use fast_info to check timezone/existence
+                f_info = ticker.fast_info
+                if not f_info or "timezone" not in f_info:
+                    continue # Try next symbol
+            except Exception:
+                continue
+
+            # Fetch history
+            df = ticker.history(period="max")
             
             if df is not None and not df.empty:
                 final_symbol = s
+                # Fetch full info safely if history worked
+                try:
+                    info = ticker.info
+                except:
+                    info = {}
                 break
         
         if df is None or df.empty:
             return None, symbol, {}
 
-        # Handle MultiIndex columns (happens in some yfinance versions/calls)
+        # Handle MultiIndex columns
         if isinstance(df.columns, pd.MultiIndex):
             df.columns = df.columns.get_level_values(-1)
         
         # Standardize column names
         df.columns = [str(c).capitalize() for c in df.columns]
-        
-        # Get ticker info safely - use the final successful symbol
-        try:
-            t = yf.Ticker(final_symbol)
-            info = t.info if hasattr(t, 'info') else {}
-        except:
-            info = {}
 
         return df, final_symbol, info
 
     except Exception as e:
-        st.error(f"Debug Error: {str(e)}") # Visible in production to help you see what's wrong
+        st.error(f"Production Fetch Error: {str(e)}")
         return None, f"Error: {str(e)}", {}
 
 # Initialize UI
