@@ -67,10 +67,10 @@ def safe_download(symbol):
         
         df.columns = [str(c).capitalize() for c in df.columns]
 
-        return df, final_symbol, info
+        return df, final_symbol, info, ticker
 
     except Exception as e:
-        return None, f"Error: {str(e)}", {}
+        return None, f"Error: {str(e)}", {}, None
 
 st.title('Finsense - Stock Analysis')
 st.subheader("Finsense Dashboard")
@@ -82,7 +82,7 @@ if not user_input.strip():
 
 # Data fetching
 with st.spinner(f"Fetching data for {user_input}..."):
-    df, symbol, info = safe_download(user_input)
+    df, symbol, info, ticker = safe_download(user_input)
 
 if df is None:
     st.error(f"No market data found for: {symbol}")
