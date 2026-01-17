@@ -20,46 +20,45 @@ def safe_get(data, key, default="Not Available"):
 def safe_download(symbol):
     try:
         symbol = symbol.strip().upper()
-        # Auto-fix Indian market symbols
-        if "." not in symbol and symbol.isalpha() and 3 <= len(symbol) <= 6:
-            actual_symbol = symbol + ".NS"
-        else:
-            actual_symbol = symbol
-
-        # Use a safe date that always has data
+        # Use a flexible end date
         end_date = datetime.today().strftime("%Y-%m-%d")
 
-        # Use threads=False to avoid issues in some environments
-        df = yf.download(
-            tickers=actual_symbol,
-            start="2000-01-01",
-            end=end_date,
-            progress=False,
-            threads=False,
-            group_by='column' # Ensure standard column layout
-        )
+        # 1. Try original symbol first
+        df = yf.download(tickers=symbol, start="2000-01-01", end=end_date, progress=False)
 
-        if df is None or df.empty:
-            # Try once more without .NS just in case
-            if ".NS" in actual_symbol:
-                df = yf.download(tickers=symbol, start="2000-01-01", end=end_date, progress=False, threads=False)
-            
-            if df is None or df.empty:
-                return None, actual_symbol
-
-        # Fix multi-index columns if they exist
-        if isinstance(df.columns, pd.MultiIndex):
-            # If multi-index, the last level is usually Open, High, etc.
-            df.columns = df.columns.get_level_values(-1)
+        # 2. Fallback for Indian stocks only if original fails
+        if (df is None or df.empty) and "." not in symbol:
+            actual_symbol = symbol + ".NS"
+            df = yf.download(tickers=actual_symbol, start="2000-01-01", end=end_date, progress=False)
+            if df is not None and not df.empty:
+                symbol = actual_symbol
         
-        # Clean column names to be strictly standard
-        # Remove any ticker prefix if present (seen in some yfinance versions)
-        df.columns = [str(c).split('.')[-1].split(' ')[-1].capitalize() for c in df.columns]
+        if df is None or df.empty:
+            return None, symbol
 
-        return df, actual_symbol
+        # 3. Robust Column Handling
+        if isinstance(df.columns, pd.MultiIndex):
+            # Check levels to find where 'Close', 'Open' etc. are
+            # In most cases, it's level 0 or 1. Let's find 'Close'.
+            found_level = -1
+            for i in range(df.columns.nlevels):
+                if any(x in ['Close', 'Open', 'High', 'Low', 'Volume'] for x in df.columns.get_level_values(i)):
+                    found_level = i
+                    break
+            
+            if found_level != -1:
+                df.columns = df.columns.get_level_values(found_level)
+            else:
+                # Last resort: flatten or take first level
+                df.columns = df.columns.get_level_values(0)
+
+        # Capitalize all columns and convert to string
+        df.columns = [str(c).capitalize() for c in df.columns]
+
+        return df, symbol
 
     except Exception as e:
-        return None, f"Error: {str(e)}"
+        return None, f"Runtime Error: {str(e)}"
 
 # Initialize info
 info = {}
