@@ -20,72 +20,55 @@ def safe_get(data, key, default="Not Available"):
 def safe_download(symbol):
     try:
         symbol = symbol.strip().upper()
-        # Use a flexible end date
-        end_date = datetime.today().strftime("%Y-%m-%d")
+        # Fallback list to try
+        symbols_to_try = [symbol]
+        if "." not in symbol:
+            symbols_to_try.append(symbol + ".NS")
 
-        # 1. Try original symbol first
-        df = yf.download(tickers=symbol, start="2000-01-01", end=end_date, progress=False)
+        df = None
+        final_symbol = symbol
 
-        # 2. Fallback for Indian stocks only if original fails
-        if (df is None or df.empty) and "." not in symbol:
-            actual_symbol = symbol + ".NS"
-            df = yf.download(tickers=actual_symbol, start="2000-01-01", end=end_date, progress=False)
+        for s in symbols_to_try:
+            t = yf.Ticker(s)
+            # Use history(period='max') for more reliable results
+            df = t.history(period="max")
             if df is not None and not df.empty:
-                symbol = actual_symbol
+                final_symbol = s
+                break
         
         if df is None or df.empty:
-            return None, symbol
+            return None, symbol, {}
 
-        # 3. Robust Column Handling
-        if isinstance(df.columns, pd.MultiIndex):
-            # Check levels to find where 'Close', 'Open' etc. are
-            # In most cases, it's level 0 or 1. Let's find 'Close'.
-            found_level = -1
-            for i in range(df.columns.nlevels):
-                if any(x in ['Close', 'Open', 'High', 'Low', 'Volume'] for x in df.columns.get_level_values(i)):
-                    found_level = i
-                    break
-            
-            if found_level != -1:
-                df.columns = df.columns.get_level_values(found_level)
-            else:
-                # Last resort: flatten or take first level
-                df.columns = df.columns.get_level_values(0)
-
-        # Capitalize all columns and convert to string
+        # Standardize column names (history usually returns them nicely)
         df.columns = [str(c).capitalize() for c in df.columns]
+        
+        # Get ticker info safely
+        try:
+            info = t.info if hasattr(t, 'info') else {}
+        except:
+            info = {}
 
-        return df, symbol
+        return df, final_symbol, info
 
     except Exception as e:
-        return None, f"Runtime Error: {str(e)}"
+        return None, f"Error: {str(e)}", {}
 
-# Initialize info
-info = {}
-
+# Initialize UI
 st.title('Finsense - Stock Analysis')
 st.subheader("Finsense Dashboard")
-user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE.NS, AAPL, TCS.NS)")
+user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE, AAPL, TCS.NS)")
 
 if not user_input.strip():
     st.info("Please enter a stock symbol to begin analysis.")
     st.stop()
 
-
-# Fetch Ticker Data
-try:
-    ticker = yf.Ticker(user_input)
-    info = ticker.info
-    if not info:
-        info = {}
-except Exception:
-    info = {}
-
-df, symbol = safe_download(user_input)
+# Data fetching with spinner
+with st.spinner(f"Fetching data for {user_input}..."):
+    df, symbol, info = safe_download(user_input)
 
 if df is None:
     st.error(f"No market data found for: {symbol}")
-    st.info("Try: RELIANCE.NS, TCS.NS, INFY.NS, AAPL, MSFT")
+    st.info("Try common tickers like: RELIANCE, TCS, AAPL, TSLA, MSFT")
     st.stop()
 # UI for Glass effect of Company Profile
 st.markdown("""
