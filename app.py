@@ -28,11 +28,6 @@ class PatchedInputLayer(InputLayer):
 
 def safe_download(symbol):
     try:
-        session = requests.Session()
-        session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        })
-
         symbol = symbol.strip().upper()
         symbols_to_try = [symbol]
         if "." not in symbol:
@@ -43,12 +38,14 @@ def safe_download(symbol):
         info = {}
 
         for s in symbols_to_try:
-            ticker = yf.Ticker(s, session=session)
+            ticker = yf.Ticker(s)
             
-            # Fast check for block
+            # Fast check
             try:
-                if not ticker.fast_info or "timezone" not in ticker.fast_info:
-                    continue
+                # Some versions of yfinance might block fast_info too, handle carefully
+                if not hasattr(ticker, 'fast_info') or ticker.fast_info is None:
+                    # Fallback to a small history check
+                    pass
             except:
                 continue
 
@@ -92,11 +89,6 @@ if df is None:
     st.info("Try common tickers like: RELIANCE, TCS, AAPL, TSLA, MSFT")
     st.stop()
 
-def safe_get(data, key, default="Not Available"):
-    try:
-        return data.get(key, default)
-    except:
-        return default
 # UI for Glass effect of Company Profile
 st.markdown("""
 <style>
