@@ -21,36 +21,45 @@ def safe_download(symbol):
     try:
         symbol = symbol.strip().upper()
         # Auto-fix Indian market symbols
-        if "." not in symbol and len(symbol) <= 6:
-            symbol += ""
+        if "." not in symbol and symbol.isalpha() and 3 <= len(symbol) <= 6:
+            actual_symbol = symbol + ".NS"
+        else:
+            actual_symbol = symbol
 
-        # Correct date formatting
+        # Use a safe date that always has data
         end_date = datetime.today().strftime("%Y-%m-%d")
 
+        # Use threads=False to avoid issues in some environments
         df = yf.download(
-            tickers=[symbol],
+            tickers=actual_symbol,
             start="2000-01-01",
             end=end_date,
-            group_by="ticker",
             progress=False,
-            threads=False
+            threads=False,
+            group_by='column' # Ensure standard column layout
         )
 
-        # Flatten multi-index columns
-        if isinstance(df.columns, tuple) or hasattr(df.columns, "levels"):
-            try:
-                df = df[symbol]
-            except KeyError:
-                pass
-            df.columns = [c.capitalize() for c in df.columns]
-
         if df is None or df.empty:
-            return None, symbol
+            # Try once more without .NS just in case
+            if ".NS" in actual_symbol:
+                df = yf.download(tickers=symbol, start="2000-01-01", end=end_date, progress=False, threads=False)
+            
+            if df is None or df.empty:
+                return None, actual_symbol
 
-        return df, symbol
+        # Fix multi-index columns if they exist
+        if isinstance(df.columns, pd.MultiIndex):
+            # If multi-index, the last level is usually Open, High, etc.
+            df.columns = df.columns.get_level_values(-1)
+        
+        # Clean column names to be strictly standard
+        # Remove any ticker prefix if present (seen in some yfinance versions)
+        df.columns = [str(c).split('.')[-1].split(' ')[-1].capitalize() for c in df.columns]
+
+        return df, actual_symbol
 
     except Exception as e:
-        return None, str(e)
+        return None, f"Error: {str(e)}"
 
 # Initialize info
 info = {}
