@@ -8,6 +8,13 @@ import plotly.graph_objects as go
 import plotly.express as px
 import os
 
+def safe_get(data, key, default="Not Available"):
+    try:
+        return data.get(key, default)
+    except:
+        return default
+
+
 @st.cache_resource(show_spinner="Loading AI Model...")
 def get_model():
     model_path = "finsense_model.onnx"
@@ -22,13 +29,6 @@ def get_model():
     )
 
     return session
-
-    
-def safe_get(data, key, default="Not Available"):
-    try:
-        return data.get(key, default)
-    except:
-        return default
 
 
 @st.cache_data(ttl=3600)
