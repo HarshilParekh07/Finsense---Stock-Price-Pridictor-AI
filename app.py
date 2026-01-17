@@ -12,6 +12,14 @@ def get_model():
     return load_model("keras_model.h5")
 
 @st.cache_data(ttl=3600)
+def get_recommendations(symbol):
+    try:
+        return yf.Ticker(symbol).recommendations
+    except:
+        return None
+
+
+@st.cache_data(ttl=3600)
 def get_major_holders(symbol):
     try:
         return yf.Ticker(symbol).major_holders
@@ -22,6 +30,14 @@ def get_major_holders(symbol):
 def get_institutional_holders(symbol):
     try:
         return yf.Ticker(symbol).institutional_holders
+    except:
+        return None
+
+@st.cache_data(ttl=3600)
+def get_recommendations_summary(symbol):
+    try:
+        t = yf.Ticker(symbol)
+        return t.recommendations_summary
     except:
         return None
 
@@ -360,8 +376,10 @@ else:
 
 
 # Pie Chart for Holders
-if ticker.institutional_holders is not None:
-    inst_df = ticker.institutional_holders.copy()
+inst_df = get_institutional_holders(user_input)
+
+if inst_df is not None:
+    inst_df = inst_df.copy()
 
     st.markdown("Institutional Holders Distribution")
 
@@ -406,8 +424,10 @@ import pandas as pd
 st.markdown("Analyst Recommendations")
 
 # CASE 1: Detailed analyst logs
-if ticker.recommendations is not None:
-    rec_df = ticker.recommendations.copy()
+rec_df = get_recommendations(user_input)
+
+if rec_df is not None:
+    rec_df = rec_df.copy()
 
     if not rec_df.empty:
         rec_df = rec_df.tail(10).reset_index()
@@ -448,8 +468,10 @@ if ticker.recommendations is not None:
             st.stop()
 
 # CASE 2: Summary trend table 
-if hasattr(ticker, "recommendations_summary") and ticker.recommendations_summary is not None:
-    trend_df = ticker.recommendations_summary.copy()
+trend_df = get_recommendations_summary(user_input)
+
+if trend_df is not None:
+    trend_df = trend_df.copy()
 
     st.markdown("Analyst Consensus Trend (Monthly)")
 
