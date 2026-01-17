@@ -7,9 +7,9 @@ from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
 
-@st.cache_resource(show_spinner="Loading Model...")
+@st.cache_resource(show_spinner="Loading AI Model...")
 def get_model():
-    return load_model("keras_model.h5")
+    return load_model("keras_model.h5", compile=False)
 
 @st.cache_data(ttl=3600)
 def get_recommendations(symbol):
