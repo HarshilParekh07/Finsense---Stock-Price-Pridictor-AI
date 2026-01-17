@@ -7,6 +7,11 @@ from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
 
+@st.cache_resource(show_spinner="Loading Model...")
+def get_model():
+    return load_model("keras_model.h5")
+
+
 st.title('Finsense - Stock Analysis')
 st.subheader("Finsense Dashboard")
 user_input = st.text_input(" Enter Stock Symbol (Example: RELIANCE.NS, AAPL, TCS.NS)")
@@ -542,7 +547,12 @@ fig.update_layout(
 # Render in Streamlit
 st.plotly_chart(fig, use_container_width=True)
 
+# AI Price Prediction Engine
 
+st.markdown("AI Closing Price Prediction Model")
+
+run_ai = st.button("Run Price Prediction")
+    
 # Spliting Data into Tranning and Testing
 
 data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.70)])
@@ -553,7 +563,10 @@ scaler = MinMaxScaler(feature_range=(0,1))
 data_training_scaler = scaler.fit_transform(data_training)
 
 # Load my model 
-model = load_model('keras_model.h5')
+if run_ai:
+    model = get_model()
+
+    st.success("AI Model Loaded — Running Predictions")
 
 # Testing Part 
 
