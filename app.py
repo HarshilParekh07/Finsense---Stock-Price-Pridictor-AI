@@ -20,7 +20,7 @@ def safe_get(data, key, default="Not Available"):
 def safe_download(symbol):
     try:
         symbol = symbol.strip().upper()
-        # Fallback list to try
+        # symbols to try in order
         symbols_to_try = [symbol]
         if "." not in symbol:
             symbols_to_try.append(symbol + ".NS")
@@ -29,9 +29,9 @@ def safe_download(symbol):
         final_symbol = symbol
 
         for s in symbols_to_try:
-            t = yf.Ticker(s)
-            # Use history(period='max') for more reliable results
-            df = t.history(period="max")
+            # yf.download is generally more reliable than Ticker.history in inconsistent environments
+            df = yf.download(s, period="max", auto_adjust=True, progress=False)
+            
             if df is not None and not df.empty:
                 final_symbol = s
                 break
@@ -39,11 +39,16 @@ def safe_download(symbol):
         if df is None or df.empty:
             return None, symbol, {}
 
-        # Standardize column names (history usually returns them nicely)
+        # Handle MultiIndex columns (happens in some yfinance versions/calls)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(-1)
+        
+        # Standardize column names
         df.columns = [str(c).capitalize() for c in df.columns]
         
-        # Get ticker info safely
+        # Get ticker info safely - use the final successful symbol
         try:
+            t = yf.Ticker(final_symbol)
             info = t.info if hasattr(t, 'info') else {}
         except:
             info = {}
@@ -51,6 +56,7 @@ def safe_download(symbol):
         return df, final_symbol, info
 
     except Exception as e:
+        st.error(f"Debug Error: {str(e)}") # Visible in production to help you see what's wrong
         return None, f"Error: {str(e)}", {}
 
 # Initialize UI
@@ -68,7 +74,9 @@ with st.spinner(f"Fetching data for {user_input}..."):
 
 if df is None:
     st.error(f"No market data found for: {symbol}")
-    st.info("Try common tickers like: RELIANCE, TCS, AAPL, TSLA, MSFT")
+    st.info("Try common tickers like: RELIANCE (NSE), AAPL (Nasdaq), TSLA (Nasdaq)")
+    st.markdown("---")
+    st.write("Troubleshooting: Ensure your internet is working and the symbol is correct on Yahoo Finance.")
     st.stop()
 # UI for Glass effect of Company Profile
 st.markdown("""
