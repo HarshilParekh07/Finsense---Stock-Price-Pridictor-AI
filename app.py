@@ -196,6 +196,14 @@ st.markdown("""
 
 
 #  UI for COMPANY PROFILE
+company_name = safe_get(info, "shortName")
+industry = safe_get(info, "industry")
+website = safe_get(info, "website")
+sector = safe_get(info, "sector")
+country = safe_get(info, "country")
+currency = safe_get(info, "currency")
+market_cap = safe_get(info, "marketCap", "N/A")
+
 st.markdown("<div class='title'> Company Profile</div>", unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
@@ -204,7 +212,7 @@ with col1:
     st.markdown(f"""
     <div class="metric-box">
         <div class="label"> Name</div>
-        <div class="value">{safe_get(info, "shortName")}</div>
+        <div class="value">{safe_get(info, "comapany_name")}</div>
     </div><br>
     <div class="metric-box">
         <div class="label"> Sector</div>
