@@ -594,107 +594,78 @@ fig.update_layout(
 
 # Render in Streamlit
 st.plotly_chart(fig, use_container_width=True)
-
-# AI Price Prediction Engine
-
-st.markdown("AI Closing Price Prediction Model")
-
-run_ai = st.button("Run Price Prediction")
     
 # Spliting Data into Tranning and Testing
 
-data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.70)])
-data_testing = pd.DataFrame(df['Close'][int(len(df)*0.70): int(len(df))])
+# AI Price Prediction Engine
+st.markdown("AI Closing Price Prediction Model")
+run_ai = st.button("Run Price Prediction")
 
-from sklearn.preprocessing import MinMaxScaler
-scaler = MinMaxScaler(feature_range=(0,1))
-data_training_scaler = scaler.fit_transform(data_training)
-
-# Load my model 
 if run_ai:
-    model = get_model()
 
+    # Data Preparation
+    data_training = pd.DataFrame(df['Close'][0:int(len(df)*0.70)])
+    data_testing = pd.DataFrame(df['Close'][int(len(df)*0.70): int(len(df))])
+
+    from sklearn.preprocessing import MinMaxScaler
+    scaler = MinMaxScaler(feature_range=(0,1))
+    data_training_scaler = scaler.fit_transform(data_training)
+
+    # Load Model
+    model = get_model()
     st.success("AI Model Loaded — Running Predictions")
 
-# Testing Part 
+    # Testing Dataset
+    past_100_days = data_training.tail(100)
+    final_df = pd.concat([past_100_days, data_testing], ignore_index=True)
+    input_data = scaler.fit_transform(final_df)
 
-past_100_days = data_training.tail(100)
-final_df = pd.concat([past_100_days, data_testing], ignore_index=True)
-input_data = scaler.fit_transform(final_df)
+    x_test = []
+    y_test = []
 
-x_test = []
-y_test = []
+    for i in range(100, input_data.shape[0]):
+        x_test.append(input_data[i-100: i])
+        y_test.append(input_data[i, 0])
 
-for i in range(100, input_data.shape[0]):
-    x_test.append(input_data[i-100: i])
-    y_test.append(input_data[i, 0])
+    x_test, y_test = np.array(x_test), np.array(y_test)
 
-x_test, y_test = np.array(x_test), np.array(y_test)
+    # Prediction
+    y_predicted = model.predict(x_test)
 
-# Making Predictions
+    scale_factor = 1 / scaler.scale_[0]
+    y_predicted = y_predicted * scale_factor
+    y_test = y_test * scale_factor
 
-y_predicted = model.predict(x_test)
-scaler = scaler.scale_
-scale_factor = 1/scaler[0]
-y_predicted = y_predicted * scale_factor
-y_test = y_test * scale_factor
+    # Visualization
+    st.subheader("Actual Price vs Predicted Price")
 
-# Visualizing the Predicted Data 
+    x_axis = np.arange(len(y_test))
+    fig = go.Figure()
 
-st.subheader("Actual Price vs Predicted Price")
+    fig.add_trace(go.Scatter(
+        x=x_axis,
+        y=y_test.flatten(),
+        name="Actual Price",
+        mode="lines"
+    ))
 
-# Convert arrays to index for clean plotting
-x_axis = np.arange(len(y_test))
+    fig.add_trace(go.Scatter(
+        x=x_axis,
+        y=y_predicted.flatten(),
+        name="Predicted Price",
+        mode="lines",
+        line=dict(dash="dash")
+    ))
 
-fig = go.Figure()
+    fig.update_layout(
+        template="plotly_dark",
+        height=500,
+        hovermode="x unified",
+        title="Actual vs Predicted Price"
+    )
 
-# Actual Price Line
-fig.add_trace(go.Scatter(
-    x=x_axis,
-    y=y_test.flatten(),
-    name="Actual Price",
-    mode="lines",
-    line=dict(color="#00E5FF", width=2.5),
-    hovertemplate="Actual: ₹%{y:.2f}<extra></extra>"
-))
+    st.plotly_chart(fig, use_container_width=True)
 
-# Predicted Price Line
-fig.add_trace(go.Scatter(
-    x=x_axis,
-    y=y_predicted.flatten(),
-    name="Predicted Price",
-    mode="lines",
-    line=dict(color="#FF3D00", width=2.5, dash="dash"),
-    hovertemplate="Predicted: ₹%{y:.2f}<extra></extra>"
-))
+else:
+    st.info("Click 'Run Price Prediction' to load the AI model and generate predictions.")
 
-# Predicted Graph Layout 
-fig.update_layout(
-    template="plotly_dark",
-    height=500,
-    hovermode="x unified",
-    title=dict(
-        text="Actual vs Predicted Price",
-        x=0,
-        font=dict(size= 15)
-    ),
-    xaxis=dict(
-        title="Time",
-        showgrid=False
-    ),
-    yaxis=dict(
-        title="Price (₹)",
-        gridcolor="rgba(255,255,255,0.1)"
-    ),
-    legend=dict(
-        orientation="h",
-        yanchor="bottom",
-        y=1.02,
-        xanchor="right",
-        x=1
-    ),
-    margin=dict(l=20, r=20, t=50, b=20)
-)
-
-# Render in Streamlit
-st.plotly_chart(fig, use_container_width=True)
