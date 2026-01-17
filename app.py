@@ -1,19 +1,27 @@
 import numpy as np
 import pandas as pd
 import yfinance as yf
-from keras.models import load_model
 import streamlit as st
+import onnxruntime as ort
 from datetime import datetime
 import plotly.graph_objects as go
 import plotly.express as px
+import os
 
 @st.cache_resource(show_spinner="Loading AI Model...")
 def get_model():
-    import os
-    if not os.path.exists("finsense_model.keras"):
-        st.error("ML model file missing: finsense_model.keras")
+    model_path = "finsense_model.onnx"
+
+    if not os.path.exists(model_path):
+        st.error("ONNX model not found: finsense_model.onnx")
         st.stop()
-    return load_model("finsense_model.keras", compile=False)
+
+    session = ort.InferenceSession(
+        model_path,
+        providers=["CPUExecutionProvider"]
+    )
+
+    return session
 
 
 @st.cache_data(ttl=3600)
@@ -635,7 +643,15 @@ if run_ai:
     x_test, y_test = np.array(x_test), np.array(y_test)
 
     # Prediction
-    y_predicted = model.predict(x_test)
+
+    input_name = model.get_inputs()[0].name
+    x_test_onnx = x_test.astype(np.float32)
+
+    y_predicted = model.run(
+        None,
+        {input_name: x_test_onnx}
+    )[0]
+
 
     scale_factor = 1 / scaler.scale_[0]
     y_predicted = y_predicted * scale_factor
