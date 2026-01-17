@@ -8,13 +8,6 @@ import plotly.graph_objects as go
 import plotly.express as px
 import os
 
-def safe_get(data, key, default="Not Available"):
-    try:
-        return data.get(key, default)
-    except:
-        return default
-
-
 @st.cache_resource(show_spinner="Loading AI Model...")
 def get_model():
     model_path = "finsense_model.onnx"
@@ -29,8 +22,7 @@ def get_model():
     )
 
     return session
-
-
+    
 @st.cache_data(ttl=3600)
 def resolve_symbol(query):
     try:
@@ -40,6 +32,7 @@ def resolve_symbol(query):
     except:
         pass
     return query
+
 
 
 @st.cache_data(ttl=3600)
@@ -196,14 +189,6 @@ st.markdown("""
 
 
 #  UI for COMPANY PROFILE
-company_name = safe_get(info, "shortName")
-industry = safe_get(info, "industry")
-website = safe_get(info, "website")
-sector = safe_get(info, "sector")
-country = safe_get(info, "country")
-currency = safe_get(info, "currency")
-market_cap = safe_get(info, "marketCap", "N/A")
-
 st.markdown("<div class='title'> Company Profile</div>", unsafe_allow_html=True)
 
 col1, col2, col3 = st.columns(3)
@@ -212,7 +197,7 @@ with col1:
     st.markdown(f"""
     <div class="metric-box">
         <div class="label"> Name</div>
-        <div class="value">{safe_get(info, "comapany_name")}</div>
+        <div class="value">{safe_get(info, "shortName")}</div>
     </div><br>
     <div class="metric-box">
         <div class="label"> Sector</div>
